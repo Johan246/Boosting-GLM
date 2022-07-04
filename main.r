@@ -1,0 +1,364 @@
+# =========================================================================
+# =========================================================================
+#                         Boosting GLM 
+# =========================================================================
+# =========================================================================
+
+# INIT
+setwd("//e75a0679/sakta/UTV/SU/Program/Analys/Boosting GLM")
+source("load_packages.r")
+load_packages(updateR = FALSE)
+ 
+
+# Output parameters --------------------------------------------------
+suffix <- "REAL"
+date <- "20220215"
+new_models <- TRUE
+REAL_data <- TRUE
+
+save <- TRUE
+load <- FALSE
+plot_folder <- paste("Plottar/",suffix,"_",date, sep="")
+dir.create(plot_folder)
+n_sim <- 600000
+
+# Data CAS ----------------------------------------------------------------
+
+### IMPORT REAL ###
+if (REAL_data == TRUE){
+  source("//e75a0679/sakta/UTV/SU/Program/Analys/Pricing_ML/import_och_tvatt.r")
+  library("haven")
+  data_input <- import_och_tvatt("//e75a0679/sakta/UTV/SU/DATA/Tariffanalysdata/df_vb_alla_skador_20170101.sas7bdat",divtest="N")[[3]]
+  
+  # Variable selction gross
+  data_input <- data_input %>% dplyr::select(c(freq,BOYTA, Bolag , Fast_alder , Byggnadstyp , Brevobjekt , Alder, dur))
+  
+  data_idx <- sample(c(1:dim(data_input)[1] ), size = n_sim, replace = FALSE)
+  
+  df <- list()
+  df$all <- as.data.frame(data_input[data_idx,])
+  
+  # factors 
+  df$all$Bolag <- as.factor(df$all$Bolag)
+  df$all$Byggnadstyp <- as.factor(df$all$Byggnadstyp)
+  df$all$Brevobjekt <- as.factor(df$all$Brevobjekt)
+  
+  train_frac <- 0.7
+  df$train <- df$all[1:(n_sim*train_frac), ]
+  df$test <- df$all[(n_sim*train_frac +1):n_sim, ]
+  
+} 
+
+
+# ======================================================================
+                           ## MODELS ##
+# ======================================================================
+if (new_models == TRUE){ 
+  # INIT and modeling parameters
+  
+  models <- list()
+  pred <- list()
+  boosting_df <- list()
+  n_trees_mu <- 1000
+  tree_depth_mu <- 2
+  learning_rate_mu <- 0.025
+  
+  # MU
+  model.freq_glm.tariff <- formula( freq ~  BOYTA + 
+                                      Bolag + 
+                                      Fast_alder + 
+                                      Byggnadstyp + 
+                                      Brevobjekt +
+                                      Alder)
+  
+  model.freq_gbm.ref <- formula( freq ~ BOYTA + 
+                                   Bolag + 
+                                   Fast_alder + 
+                                   Byggnadstyp + 
+                                   Brevobjekt + 
+                                   Alder  + 
+                                   offset(log(dur)))
+  
+  model.freq_gbm.boost <- formula( freq ~ BOYTA + 
+                                     Bolag +
+                                     Fast_alder +
+                                     Byggnadstyp +
+                                     Brevobjekt +
+                                     Alder  +  
+                                     offset(log(init_pred))) # Note that the original predictor (init_pred) contain duration as offset hence not needed here
+
+  
+  
+  # ======================================================================
+  ## Existing tariff ##
+  # ======================================================================
+   # INIT - Import existing tariff --------------------------------------------
+  
+  # Note: In this case, a simple GLM-structure exemplifies the tariff to be boosted
+  
+  models$glm_init  <- glm(model.freq_glm.tariff, 
+                          data = df$train,
+                          offset = log(dur),
+                          family = quasipoisson(link = "log"))
+  
+  
+  summary(models$glm_init)
+  
+  # INIT - Tariff predictions -----------------------------------------------
+  
+  # Note: IF original tariff model is not in glm()-form, a scoring procedure that maps tariff input to policy predictions (e.g. tabular -> mu(x_i) )
+  
+  pred$train$init <- predict.glm(object = models$glm_init, newdata = df$train , type = "response") 
+  pred$test$init <- predict.glm(object = models$glm_init, newdata = df$test , type = "response") 
+  
+  boosting_df$train <- data.frame(df$train, init_pred = pred$train$init )
+  boosting_df$test <- data.frame(df$test, init_pred = pred$test$init )
+  
+  
+  # ======================================================================
+                        ## Boosting ##
+  # ======================================================================
+  
+  # Raw GBM (for reference and comparison) ----------------------------------------------------------------
+  
+  # GBM 
+  models$raw_gbm <- gbm(model.freq_gbm.ref, 
+                  data = boosting_df$train, 
+                  distribution = "poisson",
+                  n.trees = n_trees_mu,
+                  n.minobsinnode = 10,
+                  interaction.depth = tree_depth_mu,
+                  shrinkage = learning_rate_mu,
+                  cv.folds = 5
+  )
+  
+  models$raw_gbm.ntrees <- gbm.perf(models$raw_gbm, method = "cv")      
+  
+  pred$train$ref <- predict.gbm(object = models$raw_gbm, n.trees=models$raw_gbm.ntrees, newdata = boosting_df$train , type = "response") *boosting_df$train$dur
+  balance_factor <- mean(boosting_df$train$freq)/mean(pred$train$ref)
+  pred$train$ref <- pred$test$train*balance_factor
+  pred$test$ref<- predict.gbm(object = models$raw_gbm,n.trees=models$raw_gbm.ntrees, newdata = boosting_df$test , type = "response")  *boosting_df$test$dur * balance_factor
+  
+  # BOOSTING ----------------------------------------------------------------
+  
+  # GBM 
+  models$gbm_boost <- gbm(model.freq_gbm.boost, 
+                  data = boosting_df$train, 
+                  distribution = "poisson",
+                  n.trees = n_trees_mu,
+                  n.minobsinnode = 10,
+                  interaction.depth = tree_depth_mu,
+                  shrinkage = learning_rate_mu,
+                  cv.folds = 5
+  )
+  
+  models$gbm_boost.ntrees <- gbm.perf(models$gbm_boost , method = "cv")      
+  
+  pred$train$boost <- predict.gbm(object = models$gbm_boost,n.trees=models$gbm_boost.ntrees, newdata = boosting_df$train , type = "response") *boosting_df$train$init_pred
+  balance_factor <- mean(boosting_df$train$freq)/mean(pred$train$boost)
+  pred$train$boost <- pred$train$boost*balance_factor
+  pred$test$boost <- predict.gbm(object = models$gbm_boost,n.trees=models$gbm_boost.ntrees, newdata = boosting_df$test , type = "response")  *boosting_df$test$init_pred * balance_factor
+  
+  
+  boosting_df$train <- data.frame(df$train, init_pred = pred$train$init , boost_pred = pred$train$boost )
+  boosting_df$test <- data.frame(df$test, init_pred = pred$test$init , boost_pred = pred$test$boost )
+  
+  # Balance checks
+  assert( round(mean(boosting_df$train$boost_pred),4) == round(mean(boosting_df$train$init_pred),4) )
+  
+  
+  if (save == TRUE){
+    save(models, file = paste("Data/Models_",suffix,".RData", sep = ""))
+    save(boosting_df, file = paste("Data/Boost_data_",suffix,".RData", sep = ""))
+  }
+}
+
+# ======================================================================
+                          ## BOOSTING ##
+# ======================================================================
+if (load == TRUE){
+  load(paste("Data/Models_",suffix,".RData", sep = ""))
+  load(paste("Data/Boost_data_",suffix,".RData", sep = ""))
+}
+
+facts <- c("BOYTA", 
+             "Bolag" , 
+             "Fast_alder" , 
+             "Byggnadstyp" , 
+             "Brevobjekt" , 
+             "Alder" )
+
+facts <- c("Byggnadstyp" , 
+           "Brevobjekt" )
+
+
+pgbm <- function(object, newdata){
+  mean(exp(predict.gbm(object, newdata = newdata)))
+}
+pgbm_raw <- function(object, newdata){
+  mean(exp(predict.gbm(object, newdata = newdata))*newdata[,"dur"])
+}
+pglm <- function(object, newdata){
+  mean(predict.glm(object, newdata = newdata, type="response"))
+}
+univariate_pdp_data <- list()
+for (fact in facts){
+  if (is.factor(df$train[,fact]) == FALSE){ 
+    
+    
+    xlim <- quantile(df$train[,fact], c(.01,.99)) 
+    
+    p1 <- partial(models$gbm_boost, pred.fun=pgbm, pred.var = c(fact), n.trees= models$gbm_boost.ntrees,recursive = FALSE) 
+    p2 <- partial(models$glm_init, pred.fun=pglm, pred.var = c(fact))
+    p3 <- partial(models$raw_gbm, pred.fun=pgbm_raw, pred.var = c(fact), n.trees= models$raw_gbm.ntrees,recursive = FALSE)
+    p4 <- p1$yhat*p2$yhat
+    
+    
+    indx_plt <- which(p1[,fact] > xlim[1] & p1[,fact] < xlim[2])
+    scale_factor_boosting <- mean(df$train$freq) 
+    
+    univariate_pdp_data[["fact"]] <- data.frame(factor_val = p1[indx_plt,1], Tariff = p2$yhat[indx_plt], Boost = p1$yhat[indx_plt], Ref_gbm = p3$yhat[indx_plt], After_boost = p4[indx_plt])
+      
+    univariate_pdp_data[["fact"]] %>% 
+      ggplot(aes(x=factor_val)) + 
+      geom_line(aes(y=Tariff, color="black")) + 
+      geom_line(aes(y=Boost*mean(df$train$freq), color="red")) +
+      geom_line(aes(y=Ref_gbm, color="grey"), lty=2) +
+      geom_line(aes(y=After_boost, color="blue")) + 
+      geom_abline(intercept = mean(df$train$freq),slope=0, color="grey", alpha=0.5)+
+      xlim(xlim[1],xlim[2]) +
+      labs(x= fact,
+           y="PDP",
+           subtitle="Bosting factor (red) correspond to the multiplicative difference (according to PDP) 
+           between original tariff (black) and boosted tariff (blue)")+
+      scale_colour_manual(name = 'Model', 
+                          values =c('black'='black','red'='red','grey'='grey','blue'='blue'), 
+                          labels = c('Tariff (GLM)','Boosted tariff', 'Reference (pure GBM)', 'Boosting factor'))+
+      scale_y_continuous(sec.axis = sec_axis( trans=~./mean(df$train$freq), name="Boosting factor")) +
+      theme_classic()  +
+      ggsave(paste(plot_folder,"/PDP_boost_",fact , ".png",sep=""))
+   
+    }
+}
+
+# Input Boosting factor in GLM and evaluate significance?
+
+# Friedman's H
+n_fakt <- length(facts)
+
+
+for (i in 1:n_fakt){
+  if (i == 1 ){
+    H_stat <- data.frame() 
+    M_stat <- data.frame()
+    }
+  for (j in 1:n_fakt){
+    
+    # Friedmans H-stat för varje faktorkombination
+    H_stat <- bind_rows(H_stat, data.frame(Faktor_1 = facts[i],
+                                           Faktor_2 = facts[j],
+
+                                           H_stat = interact.gbm(models$gbm_boost,
+                                                                 data= boosting_df$train,
+                                                                 n.trees = models$gbm_boost.ntrees,
+                                                                 i.var = c(facts[i],facts[j]) )))
+
+    # M_stat <- bind_rows(M_stat, data.frame(Faktor_1 = facts[i],
+    #                                        Faktor_2 = facts[j],
+    #                                        
+    #                                        M_stat = m_stat_beta(models$gbm_boost,
+    #                                                              data= boosting_df$train,
+    #                                                              n.trees = models$gbm_boost.ntrees,
+    #                                                              i.var = c(facts[i],facts[j]) )))
+
+    
+  }
+  print(paste("Klar med interaktioner för", facts[i]))
+}
+
+
+ggplot(H_stat, aes(Faktor_1, Faktor_2, fill= H_stat)) + 
+  geom_tile(color="white")+
+  geom_text(aes(label = round(H_stat,2)), color = "white", size = 4)  +
+  ggsave(paste(plot_folder,"/Hstat_boost_",fact , ".png",sep=""))
+
+ggplot(M_stat, aes(Faktor_1, Faktor_2, fill= M_stat)) + 
+  geom_tile(color="white")+
+  geom_text(aes(label = round(H_stat,2)), color = "white", size = 4)  +
+  ggsave(paste(plot_folder,"/Mstat_boost_beta_",fact , ".png",sep=""))
+
+
+
+
+# Get Two-factor PDP ------------------------------------------------------
+
+# OBSOBS: Följande är pseudokod!
+pdp_two <- partial(model$gbm_boost, pred.var = c("Byggnadstyp" , "Brevobjekt"))
+pdp_norm <- univariate_pdp_data[["Byggnadstyp"]]*univariate_pdp_data[["Brevobjekt"]]
+
+two_factor_effect <- pdp_two/pdp_norm
+
+
+# Predictive performance (MSEP) --------------------------------------------------
+
+data.frame(Pred = pred$test$boost  ,
+           obs = boosting_df$test$freq) %>%
+  
+  mutate(bin = ntile(Pred, 500)) %>% group_by(bin) %>%
+  summarise(Pred = mean(Pred),
+            obs = mean(obs)) %>%
+  ggplot(aes(x=bin)) + 
+  geom_point(aes(y=obs)) +
+  labs(title="Predictions Boosted Tariff",
+       subtitle="policies are grouped into 500 risk groups, red line is mean prediction and 
+       black dot is mean frequency within group")+
+  geom_line(aes(y=Pred), size=1, colour="red") +
+  theme_classic()+
+  ggsave(paste("Plottar/",suffix,"_",date,"/Predictions_Boosted.png",sep=""))
+
+
+data.frame(Pred = pred$test$init  ,
+           obs = boosting_df$test$freq) %>%
+  
+  mutate(bin = ntile(Pred, 500)) %>% group_by(bin) %>%
+  summarise(Pred = mean(Pred),
+            obs = mean(obs)) %>%
+  ggplot(aes(x=bin)) + 
+  geom_point(aes(y=obs)) +
+  labs(title="Predictions Initial Tariff",
+       subtitle="policies are grouped into 500 risk groups, red line is mean prediction and 
+       black dot is mean frequency within group")+
+  geom_line(aes(y=Pred), size=1, colour="red") +
+  theme_classic()+
+  ggsave(paste("Plottar/",suffix,"_",date,"/Predictions_tariff.png",sep=""))
+
+data.frame(Pred = pred$test$ref ,
+           obs = boosting_df$test$freq) %>%
+  
+  mutate(bin = ntile(Pred, 500)) %>% group_by(bin) %>%
+  summarise(Pred = mean(Pred),
+            obs = mean(obs)) %>%
+  ggplot(aes(x=bin)) + 
+  geom_point(aes(y=obs)) +
+  labs(title="Predictions Reference Tariff",
+       subtitle="policies are grouped into 500 risk groups, red line is mean prediction and 
+       black dot is mean frequency within group") +
+  geom_line(aes(y=Pred), size=1, colour="red") +
+  theme_classic()+
+  ggsave(paste("Plottar/",suffix,"_",date,"/Predictions_reference.png",sep=""))
+
+
+MSEP <- data.frame( Model=c("Reference", "Boosted", "Init-tariff"),
+            
+            
+            MSEP=c( mean((pred$test$ref - boosting_df$test$freq) ^2), 
+                   mean((pred$test$boost - boosting_df$test$freq) ^2),
+                   mean((pred$test$init - boosting_df$test$freq) ^2)))
+
+p_msep <- ggplot(tibble(x=0,y=0, tb=list(MSEP ))) +
+  theme_void() + 
+  geom_table(aes(x, y, label = tb),parse = TRUE)  +
+  theme(plot.title=element_text(size=12, hjust=0.5, face="bold", colour="black", vjust=-1),
+        plot.subtitle=element_text(size=8, hjust=0.5, face="italic", color="black"))+
+  ggsave(paste("Plottar/",suffix,"_",date,"/MSEP.png",sep=""), width=10, height=8)   
+
