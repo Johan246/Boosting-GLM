@@ -13,7 +13,7 @@ if (updateR==TRUE){
   
 packages <- c("tidyverse","tidymodels","dplyr", "pdp",
              "CASdatasets","iml","gbm", "testit", "flashlight",
-             "ggpmisc", "dbplyr")
+             "ggpmisc", "dbplyr","caret")
 
 # Install packages not yet installed
 installed_packages <- packages %in% rownames(installed.packages())
