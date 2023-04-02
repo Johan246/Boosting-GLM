@@ -29,9 +29,8 @@ dir.create(plot_folder)
 n_sim <- 650000
 
 
-# Algo parameters ---------------------------------------------------------
-
-plot_during_algo <- FALSE
+# Modeling hyperparameters ---------------------------------------------------------
+ 
 n_trees_mu <- 1000
 tree_depth_mu <- 2
 learning_rate_mu <- 0.025
@@ -208,18 +207,7 @@ cat_facts <-  colnames(df$test)[sapply(df$test,class) =="factor" ]
                                Density+ 
                                Region )
   
-  
-  model.freq_gbm.boost <- formula( freq ~  Area	+ 
-                                   VehPower	+ 
-                                   VehAge +
-                                   DrivAge + 
-                                   VehBrand+ 
-                                   BonusMalus +	
-                                   VehGas	+ 
-                                   Density+ 
-                                   Region + 
-                                   offset(log(init_pred))) # Note that the original predictor (init_pred) contain duration as offset hence not needed here
-  
+   
   }
   
   
@@ -239,27 +227,17 @@ cat_facts <-  colnames(df$test)[sapply(df$test,class) =="factor" ]
                                    Brevobjekt + 
                                    Alder  + 
                                    offset(log(dur)))
-  
-  model.freq_gbm.boost <- formula( freq ~ BOYTA + 
-                                     Bolag +
-                                     Fast_alder +
-                                     Byggnadstyp +
-                                     Brevobjekt +
-                                     Alder  +  
-                                     offset(log(init_pred))) # Note that the original predictor (init_pred) contain duration as offset hence not needed here
-}
+   }
   
   if (new_models == TRUE){ 
     # INIT and modeling parameters
     
-  
-  
+
   # ======================================================================
-  ## Existing tariff ##
+  ## Benchmark model ##
   # ======================================================================
-   # INIT - Import existing tariff --------------------------------------------
-  
-  # Note: In this case, a simple GLM-structure exemplifies the tariff to be boosted
+ 
+  # Note: In this case, a simple GLM-structure exemplifies the a naive glm-benchmark
   
   models$glm_init  <- glm(model.freq_glm.tariff, 
                           data = df$train,
@@ -269,9 +247,7 @@ cat_facts <-  colnames(df$test)[sapply(df$test,class) =="factor" ]
   summary(models$glm_init)
   
   # INIT - Tariff predictions -----------------------------------------------
-  
-  # Note: IF original tariff model is not in glm()-form, a scoring procedure that maps tariff input to policy predictions (e.g. tabular -> mu(x_i) )
-  
+   
   pred$train$init <- predict.glm(object = models$glm_init, 
                                  newdata = df$train , 
                                  type = "response") 
@@ -327,38 +303,7 @@ cat_facts <-  colnames(df$test)[sapply(df$test,class) =="factor" ]
                                n.trees=models$raw_gbm.ntrees,
                                newdata = boosting_df$cal , 
                                type = "response")  *boosting_df$cal$dur * balance_factor
-  
-  # ======================================================================
-  ## Training boosting GBM ##
-  # ======================================================================
-  
-  # GBM 
-  models$gbm_boost <- gbm(model.freq_gbm.boost, 
-                  data = boosting_df$train, 
-                  distribution = "poisson",
-                  n.trees = n_trees_mu,
-                  n.minobsinnode = 10,
-                  interaction.depth = tree_depth_mu,
-                  shrinkage = learning_rate_mu,
-                  cv.folds = 5
-                  )
-  
-  models$gbm_boost.ntrees <- gbm.perf(models$gbm_boost , method = "cv")      
-  
-  pred$train$boost <- predict.gbm(object = models$gbm_boost,n.trees=models$gbm_boost.ntrees, newdata = boosting_df$train , type = "response") *boosting_df$train$init_pred
-  balance_factor <- mean(boosting_df$train$freq)/mean(pred$train$boost)
-  pred$train$boost <- pred$train$boost*balance_factor
-  pred$test$boost <- predict.gbm(object = models$gbm_boost,n.trees=models$gbm_boost.ntrees, newdata = boosting_df$test , type = "response")  *boosting_df$test$init_pred * balance_factor
-  pred$cal$boost <- predict.gbm(object = models$gbm_boost,n.trees=models$gbm_boost.ntrees, newdata = boosting_df$cal , type = "response")  *boosting_df$cal$init_pred * balance_factor
-  
-  
-  boosting_df$train <- data.frame(df$train, init_pred = pred$train$init , boost_pred = pred$train$boost )
-  boosting_df$cal <- data.frame(df$cal, init_pred = pred$cal$init , boost_pred = pred$cal$boost )
-  boosting_df$test <- data.frame(df$test, init_pred = pred$test$init , boost_pred = pred$test$boost )
-  
-  # Balance checks
-  assert( round(mean(boosting_df$train$boost_pred),4) == round(mean(boosting_df$train$init_pred),4) )
-  
+   
   
   if (save == TRUE){
     save(models, file = paste("Data/Models_",suffix,".RData", sep = ""))
@@ -376,12 +321,6 @@ cat_facts <-  colnames(df$test)[sapply(df$test,class) =="factor" ]
 # ======================================================================
                     ## Extracting boosting factors ##
 # ======================================================================
-  
-  
-#### SELECT WHICH MODEL TO EXTRACT FROM ("Boost" or "raw") #### 
-  
-model_select <- "raw" # "Boost"
-  
 
 # PDP-functions 
 pgbm <- function(object, newdata){
@@ -436,27 +375,23 @@ if (new_univar_effects == TRUE){
   }
   
   
-  if (save == TRUE){
-    save(univariate_pdp_data, file = paste("Data/Univar_effects_",suffix,".RData", sep = ""))
-  }
-}else{
 
-  load(paste("Data/Univar_effects_",suffix,".RData", sep = ""))
-  
-} 
+# Load or save data
+if (save == TRUE){
+    save(univariate_pdp_data, file = paste("Data/Univar_effects_",suffix,".RData", sep = ""))
+  }else{
+
+    load(paste("Data/Univar_effects_",suffix,".RData", sep = ""))
+    } 
   
   
 # Marginal (Two-way) effects -------------------------------------------
 
-  
 ## Scanning interaction effects with Friedmans H'statistics
   
 if (new_twoway_effects == TRUE){
-  
-  if (model_select == "Boost"){effect_model <- models$gbm_boost
-                                n_trees <- models$gbm_boost.ntrees }
-  if (model_select == "raw"){effect_model <- models$raw_gbm
-                              n_trees <- models$raw_gbm.ntrees}
+   effect_model <- models$raw_gbm
+   n_trees <- models$raw_gbm.ntrees
   
   for (i in 1:length(facts)){
     for (j in 1:max(1,(i-1)) ){
@@ -501,27 +436,19 @@ if (new_twoway_effects == TRUE){
                   chull = TRUE,
                   grid.resolution = max_grid)
   
-  
   }
   
+# Load or save data
+if (save == TRUE){
+  save(interaction_effects, file = paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
+}else{
+  load(paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
+} 
   
-    if (save == TRUE){
-      if(model_select == "Boost"){ save(interaction_effects, file = paste("Data/Interaction_effects_",suffix,".RData", sep = ""))}
-      if(model_select == "raw"){ save(interaction_effects, file = paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))}
-    }
-    
-    
-  }else{
-    
-    
-    if(model_select == "Boost"){ load(paste("Data/Interaction_effects_",suffix,".RData", sep = ""))}
-    if(model_select == "raw"){ load(paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))}
-    
-  } 
-
-
-  # Testing boosting factors  -----------------------------------------------
-
+  # ======================================================================
+  ##  Scoring with extracted factors ##
+  # ======================================================================
+  
 if (scoring_boosting_factors == TRUE){  
     
   factor_update <- list()
@@ -542,8 +469,8 @@ if (scoring_boosting_factors == TRUE){
   
   ## Univariate
   for (fact in num_facts){
-    if (model_select == "Boost") {model_name <- "Boost"}
-    if (model_select == "raw") {model_name <- "Ref_gbm"}
+    
+    model_name <- "Ref_gbm"
     # Factor range
     range <- min(df$all[fact]):max(df$all[fact])
     
@@ -556,6 +483,7 @@ if (scoring_boosting_factors == TRUE){
     
  
     factor_update[[fact]][is.na(factor_update[[fact]])] <- 1
+    
     # Saving interpolated PDP-values
     univariate_pdp_data_complete[[fact]] <- data.frame(factor_val = range, 
                                                        Ref_gbm_interpol =  factor_update[[fact]] )
@@ -564,9 +492,7 @@ if (scoring_boosting_factors == TRUE){
     train_factors_new[fact] <- factor_update[[fact]][boosting_df$train[[fact]]  - min(range) + 1 ]
     cal_factors_new[fact] <- factor_update[[fact]][boosting_df$cal[[fact]]  - min(range) + 1 ]
     test_factors_new[fact] <- factor_update[[fact]][boosting_df$test[[fact]]  - min(range) + 1 ]
-  } 
-   
-  
+  }
   ## Interactions
   for (k in 1:length(top_interactions$Faktor_1)){
     
@@ -593,7 +519,7 @@ if (scoring_boosting_factors == TRUE){
      
     
      
-    
+    # If any of the two factors are categorical, matching exact, otherwise nearest neighbor
     for (i in 1: nrow(range_grid)){
       if (is.numeric(df$all[[top_interactions$Faktor_1[k]]])){
         temp_fact1_val <- temp_interaction_effects[[fact_1]][which.min(abs(temp_interaction_effects[[fact_1]] - range_grid[i,"Var1"]))]
@@ -651,39 +577,30 @@ if (scoring_boosting_factors == TRUE){
   train_factors_new["dur"] <- boosting_df$train$dur
   cal_factors_new["dur"] <- boosting_df$cal$dur
   test_factors_new["dur"] <- boosting_df$test$dur
+
   
-  if(model_select =="Boost"){
-    train_factors_new["init_pred"] <- boosting_df$train$init
-    cal_factors_new["init_pred"] <- boosting_df$cal$init
-    test_factors_new["init_pred"] <-boosting_df$test$init
-      } 
-  
-  if(model_select =="raw"){
-    train_factors_new["init_pred"] <- mean(boosting_df$train$freq)
-    cal_factors_new["init_pred"] <-  mean(boosting_df$train$freq)
-    test_factors_new["init_pred"] <- mean(boosting_df$train$freq)
-    }
-  
+  # Init pred is hereof legacy reasons...
+  train_factors_new["init_pred"] <- mean(boosting_df$train$freq)
+  cal_factors_new["init_pred"] <-  mean(boosting_df$train$freq)
+  test_factors_new["init_pred"] <- mean(boosting_df$train$freq)
+
    
   boosting_df$train_factors <- train_factors_new
   boosting_df$cal_factors <- cal_factors_new
   boosting_df$test_factors <- test_factors_new
    
   
-  if (save == TRUE){
-    if(model_select == "Boost"){save(boosting_df, file=paste("Data/Boost_data_",suffix,".RData", sep = ""))}
-    if(model_select == "raw"){save(boosting_df, file=paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))}
-    
-  }
-}else{
+  # Save or load
+  if (save == TRUE){save(boosting_df, file=paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))
+  }else{
+  load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))}  
   
-  if(model_select == "Boost"){load(paste("Data/Boost_data_",suffix,".RData", sep = ""))}
-  if(model_select == "raw"){load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))}
+}
   
-}  
-
-# Bias regularisation of boosting factors  -----------------------------------------------
-
+  # ======================================================================
+  ##  Auto-calibration of PDP-factors ##
+  # ======================================================================
+   
 tree_control = rpart.control(minbucket=10, cp=0.00001)
 
 all_facts <- names(boosting_df$train_factors %>% dplyr::select(-c("init_pred","freq","dur")))
@@ -729,8 +646,6 @@ for (fact in all_facts){
   univariate_pdp_data_complete[[fact]]$Final_model <- mean(boosting_df$train$freq) + predict(tree_temp, newdata = temp_data)
   }
   
-  
-
 } 
 
 
@@ -741,11 +656,15 @@ boosting_df$cal_factors_final <- data.frame(boosting_df$cal_factors_final, boost
 boosting_df$test_factors_final <- data.frame(boosting_df$test_factors_final, boosting_df$test[, cat_facts])
 
 
+
+# ======================================================================
+##  FINAL GLM-modeling ##
+# ======================================================================
+
 # Only include factors that have at least 2 levels --->>> MANUAL STEP AT THIS TIME!!
  
 final_factors <- apply(boosting_df$train_factors_final,2, FUN= function(x) length(unique(x)))   
-#final_factors_pdp <- apply(boosting_df$train_factors_final_pdp,2, FUN= function(x) length(unique(x)))   
-
+ 
 #### Balancing with GLM - Training glm on retrieved factor effects  
 # Vanilla GLM 
 
@@ -823,9 +742,12 @@ mean(pred$train$boosted_glm$vanilla)
 mean(pred$train$boosted_glm$vanilla_no_inter)
 mean(pred$train$boosted_glm$lasso)
 
- 
-###### Updating PDP according to lasso selections ######
 
+# ======================================================================
+##  Defining final models: Updating PDP according to lasso selections ##
+# ======================================================================
+
+###### ######
 
 ## Extracting lasso values
 row_names <- rownames(coef(models$final$lasso))
@@ -835,13 +757,10 @@ coef_values <- coef(models$final$lasso)
 coef_values <- as.numeric(as.matrix(coef_values))
 coef_values[is.na(coef_values)] <- 0
 
- 
-for (fact in num_facts){ 
-  
+for (fact in num_facts){
    temp_pdp_val <- round(univariate_pdp_data[[fact]]$Final_model  -   mean(boosting_df$train$freq),6)
    temp_coef_level <- round(as.numeric(factor_values[which(factors==fact) ]),6)
    temp_coef_val <- round(as.numeric(coef_values[which(factors==fact) ]),6)
-   
    
    temp_new_pdp_val <- rep(0, length(temp_pdp_val))
    for (i in 1:length(temp_pdp_val)){ 
@@ -855,18 +774,18 @@ for (fact in num_facts){
 
    univariate_pdp_data[[fact]]$Final_model_lasso <- exp(temp_new_pdp_val)*mean(boosting_df$train$freq)
    }
-  
-  
-  
-# FINAL: Normalizing PDPs for figures
 
-# Normalising new PDPs 
+# ======================================================================
+##  Visualisation and performance metrics ##
+# ======================================================================
+  
+  
+# FINAL: Normalizing PDPs for visualisations
 
 for  (fact in num_facts){
   univariate_pdp_data[[fact]]$Final_model <-  univariate_pdp_data[[fact]]$Final_model/mean( univariate_pdp_data[[fact]]$Final_model)*mean( univariate_pdp_data[[fact]]$Ref_gbm)
   univariate_pdp_data[[fact]]$Final_model_lasso <-  univariate_pdp_data[[fact]]$Final_model_lasso/mean( univariate_pdp_data[[fact]]$Final_model_lasso)*mean( univariate_pdp_data[[fact]]$Ref_gbm)
-  #univariate_pdp_data[[fact]]$Final_model_pdp <-  univariate_pdp_data[[fact]]$Final_model_pdp/mean( univariate_pdp_data[[fact]]$Final_model_pdp)*mean( univariate_pdp_data[[fact]]$Ref_gbm)
-}
+  }
  
 
 if (save == TRUE){
