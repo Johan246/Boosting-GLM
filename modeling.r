@@ -1,4 +1,9 @@
 
+
+print(paste("STARTING WITH DATASET: ", data,sep="" ))
+
+
+
 # Factors of interest
 
 if (data == "REAL"){
@@ -40,10 +45,10 @@ if (data == "beMTPL"){ ### OBSOBS: EXCLUDING POSTCODE!!
 if (data == "auspriv"){
   
   facts <- c("VehValue",
+             "VehAge",
              "VehBody",
              "Gender",
-             "DrivAge",
-             "ClaimOcc")
+             "DrivAge")
   
   
 }
@@ -117,14 +122,14 @@ if (data == "REAL"){
 if (data == "auspriv"){
   
   load(paste("Data/ausprivauto0405.rda", sep = "")) 
-  n_sim <- length(ausprivauto0405)
+  n_sim <- nrow(ausprivauto0405)
   
   data_idx <- sample(c(1:dim(ausprivauto0405)[1] ), size = n_sim, replace = FALSE)
-  df$all <- as.data.frame(ausprivauto0405[data_idx,]) %<% dplyr::select(-c("ClaimOcc","ClaimAmount"))
+  df$all <- as.data.frame(ausprivauto0405[data_idx,]) %>% dplyr::select(-c("ClaimOcc","ClaimAmount"))
  
   # Naming to fit algo
-  colnames( df$all$ClaimNb ) <- "freq"
-  colnames( df$all$Exposure)  <- "dur"
+  colnames( df$all)[which(colnames( df$all) == "ClaimNb")] <- "freq"
+  colnames( df$all)[which(colnames( df$all) == "Exposure")]  <- "dur"
   
   # Factors
   df$all$VehAge <- as.factor( df$all$VehAge)
@@ -138,15 +143,15 @@ if (data == "auspriv"){
 if (data == "beMTPL"){
   
   load(paste("Data/mtpl_be.rda", sep = "")) 
-  n_sim <- length(mtpl_be)
+  n_sim <- nrow(mtpl_be)
   
   data_idx <- sample(c(1:dim(mtpl_be)[1] ), size = n_sim, replace = FALSE)
-  df$all <- as.data.frame(mtpl_be[data_idx,]) %<% dplyr::select(-c("id"))
+  df$all <- as.data.frame(mtpl_be[data_idx,])  %>%  dplyr::select(-c("id"))
   
   # Naming to fit algo
-  colnames( df$all$nclaims ) <- "freq"
-  colnames( df$all$expo)  <- "dur"
-   
+  colnames( df$all)[which(colnames( df$all) == "nclaims")] <- "freq"
+  colnames( df$all)[which(colnames( df$all) == "expo")]  <- "dur"  
+  
   # Factors
   df$all$coverage <- as.factor( df$all$coverage)
   df$all$sex  <- as.factor( df$all$sex)
@@ -159,14 +164,14 @@ if (data == "beMTPL"){
 if (data == "norauto"){
   
   load(paste("Data/norauto.rda", sep = "")) 
-  n_sim <- length(norauto)
+  n_sim <- nrow(norauto)
   
   data_idx <- sample(c(1:dim(norauto)[1] ), size = n_sim, replace = FALSE)
-  df$all <- as.data.frame(norauto[data_idx,]) %<% dplyr::select(-c("ClaimAmount"))
+  df$all <- as.data.frame(norauto[data_idx,]) %>%  dplyr::select(-c("ClaimAmount"))
   
   # Naming to fit algo
-  colnames( df$all$NbClaim) <- "freq"
-  colnames( df$all$Expo)  <- "dur"
+  colnames( df$all)[which(colnames( df$all) == "NbClaim")] <- "freq"
+  colnames( df$all)[which(colnames( df$all) == "Expo")]  <- "dur" 
   
   # Factors
   df$all$Male <- as.factor( df$all$Male)
@@ -242,7 +247,7 @@ if (data == "auspriv"){
                                       DrivAge )
 }
 
-if (data == "freMTPL"){
+if (data == "beMTPL"){
   # MU
   model.freq_gbm.ref <- formula(freq ~  coverage + 
                                   ageph + 
@@ -300,43 +305,7 @@ if (data == "REAL"){
 
 
 # Helpfunctions -----------------------------------------------------------
-
-# Deviance loss
-deviance <- function(pred_mu, pred_phi=NULL, y, res){
-  
-  # Init
-  dev <- rep(0,length(y))
-  
-  # Deviance calculations
-  for (i in 1:length(y)){
-    if (y[i] == 0){
-      dev[i] <- 2*pred_mu[i]
-    }
-    else {
-      dev[i] <- 2*(pred_mu[i] - y[i]  +  y[i]  * log(y[i]/pred_mu[i])) 
-    }
-  }
-  
-  # Scaling deviance if wanted
-  if (!is.null(pred_phi)) {
-    #print("Scaled deviance")
-    
-    dev <- dev / pred_phi
-  } else {
-    #print("Unscaled deviance")
-  }
-  
-  if (res==TRUE){
-    return(dev)
-  }
-  else{
-    return(sum(dev))
-  }
-  
-}
-
-
-
+source("helpfunctions.r")
 
 # ======================================================================
 ## MODELING ##
@@ -384,15 +353,15 @@ if (new_models == TRUE){
   # ======================================================================
   
   # GBM 
-  models$raw_gbm <- gbm(model.freq_gbm.ref, 
-                  data = boosting_df$train, 
-                  distribution = "poisson",
-                  n.trees = n_trees_mu,
-                  n.minobsinnode = 10,
-                  interaction.depth = tree_depth_mu,
-                  shrinkage = learning_rate_mu,
-                  cv.folds = 5
-                    )
+  models$raw_gbm <- gbm(model.freq_gbm.ref,
+                        bag.fraction = 0.75 ,
+                        data = boosting_df$train, 
+                        distribution = "poisson",
+                        n.trees = n_trees_mu,
+                        n.minobsinnode = 10,
+                        interaction.depth = tree_depth_mu,
+                        shrinkage = learning_rate_mu,
+                        cv.folds = 5 )
   
   models$raw_gbm.ntrees <- gbm.perf(models$raw_gbm, method = "cv")      
   
@@ -416,6 +385,8 @@ if (new_models == TRUE){
                                newdata = boosting_df$cal , 
                                type = "response")  *boosting_df$cal$dur * balance_factor
    
+  
+  print("Modeling done!")
   
   if (save == TRUE){
     save(models, file = paste("Data/Models_",suffix,".RData", sep = ""))
@@ -442,24 +413,25 @@ pglm <- function(object, newdata){mean(predict.glm(object, newdata = newdata, ty
 if (new_univar_effects == TRUE){
   # Marginal (univariate) effects -------------------------------------------
   
+  print("Extracting univariate effects...")
   univariate_pdp_data <- list()
   
   for (fact in num_facts){
-  
+    
     #for (fact in "VehPower"){
       
     
       if (is.factor(df$train[,fact]) == FALSE){ 
       
       
-      p <- partial(models$raw_gbm, 
+      p <- suppressMessages( partial(models$raw_gbm, 
                    pred.fun=pgbm_raw,
                    chull = TRUE, 
                    pred.var = c(fact), 
                    n.trees= models$raw_gbm.ntrees,
                    quantiles = TRUE,
                    recursive = FALSE,
-                   probs = c(1:30)/30 )
+                   probs = c(1:30)/30 ))
      
       univariate_pdp_data[[fact]] <- data.frame(factor_val = p[,1], 
                                                 Ref_gbm = p$yhat[])
@@ -485,6 +457,8 @@ if (save == TRUE){
 ## Scanning interaction effects with Friedmans H'statistics
   
 if (new_twoway_effects == TRUE){
+  
+  print("Extracting two-way effects...")
    effect_model <- models$raw_gbm
    n_trees <- models$raw_gbm.ntrees
   
@@ -520,17 +494,18 @@ if (new_twoway_effects == TRUE){
       else{max_grid <-  min(nrow(unique(boosting_df$train[top_interactions$Faktor_1[i]] )), 
                             nrow(unique(boosting_df$train[top_interactions$Faktor_2[i]] )))}
     
-    interaction_effects[[top_interactions$Faktor_1[i]]][[top_interactions$Faktor_2[i]]] <- partial(
+    interaction_effects[[top_interactions$Faktor_1[i]]][[top_interactions$Faktor_2[i]]] <- suppressMessages( partial(
                   effect_model, 
                   pred.fun=pgbm_raw, 
                   pred.var = c(top_interactions$Faktor_1[i], top_interactions$Faktor_2[i]),
                   n.trees= n_trees,
                   recursive = FALSE,
                   chull = TRUE,
-                  grid.resolution = max_grid)
+                  grid.resolution = max_grid))
   
   }
 }
+
 # Load or save data
 if (save == TRUE){
   save(interaction_effects, file = paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
@@ -543,7 +518,8 @@ if (save == TRUE){
 # ======================================================================
 
 if (scoring_boosting_factors == TRUE){  
-    
+  print("Start scoring...")
+  
   factor_update <- list()
   old_factor_effect <- list() 
   factor_levels <- list()
@@ -595,22 +571,24 @@ if (scoring_boosting_factors == TRUE){
     temp_interaction_effects <- interaction_effects[[fact_1]][[fact_2]]
     temp_interaction_effects <- data.frame(temp_interaction_effects,idx=(1:nrow(temp_interaction_effects)) )
     
-    # Factor range
-    if (is.numeric(df$all[[top_interactions$Faktor_1[k]]])){
-      range1 <- min(df$all[top_interactions$Faktor_1[k]]):max(df$all[top_interactions$Faktor_1[k]])
-    }else{
-      range1 <- unique(df$all[top_interactions$Faktor_1[k]])[[fact_1]]
-    }
-    str(range1)
     
-    if (is.numeric(df$all[[top_interactions$Faktor_2[k]]])){
-      range2 <- min(df$all[top_interactions$Faktor_2[k]]):max(df$all[top_interactions$Faktor_2[k]])
+    
+    # Factor range
+    if (is.numeric(df$all[[fact_1 ]])){
+      range1 <- sort( unique(df$all[fact_1])[[fact_1]] )
+    }else{
+      range1 <- unique(df$all[fact_1])[[fact_1]]
+    }
+    
+    
+    if (is.numeric(df$all[[fact_2]])){
+      range2 <- sort( unique(df$all[fact_2])[[fact_2]] )
       }else{
-        range2 <- unique(df$all[[top_interactions$Faktor_2[k]]])[[fact_1]]
+        range2 <- unique(df$all[[fact_2]])
           }
       
     range_grid <- data.frame(expand.grid(range1,range2), pred = NA )
-      
+    
      
     # If any of the two factors are categorical, matching exact, otherwise nearest neighbor
     for (i in 1: nrow(range_grid)){
@@ -695,7 +673,7 @@ if (scoring_boosting_factors == TRUE){
   load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))}  
   
 }
-
+ 
 # ======================================================================
 ##  Auto-calibration of PDP-factors ##
 # ======================================================================
@@ -764,7 +742,7 @@ model.freq_glm.final_lasso <- formula(eval(paste("freq ~ factor(", paste(final_f
 models$final$vanilla  <- glm(model.freq_glm.final, 
                                 data = boosting_df$train_factors_final, 
                                 family = quasipoisson(link = "log"))
-
+ 
 # Lasso GLM -------------------------------------------------------------
 
 glmnet_data <- model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final )
@@ -791,13 +769,13 @@ coef(models$final$lasso)
 summary(models$final$vanilla) 
 
 # Predictions  -------------------------------------------------
-pred$train$boosted_glm$vanilla <- as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$train_factors_final, type="response", newoffset=boosting_df$train_factors_final$dur))   
+pred$train$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$train_factors_final, type="response", newoffset=boosting_df$train_factors_final$dur)) , function(x) min(x,2))    
 pred$cal$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$cal_factors_final, type="response"), newoffset=boosting_df$cal_factors_final$dur), function(x) min(x,2))  
 pred$test$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$test_factors_final, type="response") , newoffset=boosting_df$test_factors_final$dur ) , function(x) min(x,2))
 
-pred$train$boosted_glm$lasso <- as.numeric(predict(models$final$lasso,  newx = model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) ))
-pred$cal$boosted_glm$lasso <- as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur)))
-pred$test$boosted_glm$lasso <- as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$test_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$test_factors$dur))) 
+pred$train$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso,  newx = model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) )), function(x) min(x,2))  
+pred$cal$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur))), function(x) min(x,2))  
+pred$test$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$test_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$test_factors$dur))) , function(x) min(x,2))  
 
 # Balance check  -------------------------------------------------
 mean(boosting_df$train$freq)
@@ -845,8 +823,8 @@ if (save == TRUE){
   save(boosting_df, file = paste("Data/Boost_data_",suffix,".RData", sep = ""))
   save(pred, file = paste("Data/Predictions_",suffix,".RData", sep = ""))
   save(univariate_pdp_data_complete, file = paste("Data/PDP_uni_",suffix,".RData", sep = ""))
+  
 }
-
-
+ 
 
  
