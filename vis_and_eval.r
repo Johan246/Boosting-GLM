@@ -1,4 +1,19 @@
 
+# Helpfunctions -----------------------------------------------------------
+source("helpfunctions.r")
+
+
+# Data import -------------------------------------------------------------
+
+load(paste("Data/Models_",suffix,".RData", sep = "")) 
+load(paste("Data/Predictions_",suffix,".RData", sep = ""))
+load(paste("Data/Univar_effects_",suffix,".RData", sep = ""))
+load(paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
+load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))
+load(paste("Data/PDP_uni_",suffix,".RData", sep = ""))
+
+num_facts <-  colnames(boosting_df$train %>% dplyr::select(-c("dur","freq")))[sapply(boosting_df$train %>% dplyr::select(-c("dur","freq")),class) %in% c("numeric","integer")] 
+
 # Partial Dependence Plots - final models (incl bench) ---------------------------------
 
 for (fact in num_facts){
@@ -8,7 +23,7 @@ for (fact in num_facts){
     geom_line(aes(y=Final_model, color="red"))+
     geom_line(aes(y=Ref_gbm_interpol , color="grey"), lty=2) +
     geom_line(aes(y=Final_model_lasso, color="blue"))+
-    geom_abline(intercept = mean(df$train$freq),slope=0, color="grey", alpha=0.5)+
+    geom_abline(intercept = mean(boosting_df$train$freq),slope=0, color="grey", alpha=0.5)+
     #xlim(xlim[1],xlim[2])+
     labs(x= fact,
          y="PDP" )+
@@ -16,7 +31,7 @@ for (fact in num_facts){
                         values =c('black'='black','red'='red','grey'='grey','blue'='blue'), 
                         labels = c('Linear','Final GLM','GBM (PDP)','After trees')
     )+
-    scale_y_continuous(sec.axis = sec_axis( trans= ~./mean(df$train$freq), name="Boosting factor")) + 
+    scale_y_continuous(sec.axis = sec_axis( trans= ~./mean(boosting_df$train$freq), name="Boosting factor")) + 
     theme_classic() +
     theme(legend.position ="bottom")
   
@@ -26,64 +41,52 @@ for (fact in num_facts){
 
 
 # Predictive performance --------------------------------------------------
-
-MSEP_cal <- data.frame( Model=c("Intercept","Reference", "Boosted", "Init-tariff", "Boosted_GLM_vanilla", "Boosted_GLM_no_interactions", "Boosted_GLM_lasso"),
+model_names <- c("Intercept","GBM", "Linear", "Final GLM (no lasso)", "Final GLM")
+MSEP_cal <- data.frame( Model= model_names,
                         
                         
                         MSEP=round(c( mean((mean(boosting_df$train$freq) - boosting_df$cal$freq) ^2), 
                                       mean((pred$cal$ref - boosting_df$cal$freq) ^2), 
-                                      mean((pred$cal$boost - boosting_df$cal$freq) ^2),
                                       mean((pred$cal$init - boosting_df$cal$freq) ^2),
                                       mean((pred$cal$boosted_glm$vanilla - boosting_df$cal$freq)^2),
-                                      mean((pred$cal$boosted_glm$vanilla_no_inter - boosting_df$cal$freq)^2),
                                       mean((pred$cal$boosted_glm$lasso - boosting_df$cal$freq)^2)),4),
                         
                         Deviance = round(c(deviance(rep(mean(boosting_df$train$freq),length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$ref, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
-                                           deviance(pred$cal$boost, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$init, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$boosted_glm$vanilla , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
-                                           deviance(pred$cal$boosted_glm$vanilla_no_inter , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$boosted_glm$lasso , pred_phi=NULL, boosting_df$cal$freq, res = FALSE)),4),
                         
                         
                         
                         Fidelity= round(c(0,
-                                          cor(pred$cal$ref, pred$cal$ref),
-                                          cor(pred$cal$boost,pred$cal$ref),
+                                          cor(pred$cal$ref, pred$cal$ref), 
                                           cor(pred$cal$init, pred$cal$ref),
                                           cor(pred$cal$boosted_glm$vanilla , pred$cal$ref),
-                                          cor(pred$cal$boosted_glm$vanilla_no_inter ,pred$cal$ref),
                                           cor(pred$cal$boosted_glm$lasso ,pred$cal$ref)),2)
 )
 
 
-MSEP_test <- data.frame( Model=c("Intercept","Reference", "Boosted", "Init-tariff","Boosted_GLM_vanilla", "Boosted_GLM_no_interactions","Boosted_GLM_lasso"),
+MSEP_test <- data.frame( Model=model_names,
                          
                          
                          MSEP=round(c( mean((mean(boosting_df$train$freq) - boosting_df$test$freq) ^2),
-                                       mean((pred$test$ref - boosting_df$test$freq) ^2), 
-                                       mean((pred$test$boost - boosting_df$test$freq) ^2),
+                                       mean((pred$test$ref - boosting_df$test$freq) ^2),  
                                        mean((pred$test$init - boosting_df$test$freq) ^2),
                                        mean((pred$test$boosted_glm$vanilla - boosting_df$test$freq) ^2),
-                                       mean((pred$test$boosted_glm$vanilla_no_inter - boosting_df$test$freq) ^2),
                                        mean((pred$test$boosted_glm$lasso - boosting_df$test$freq) ^2)),4),
                          
                          Deviance = round(c(deviance(rep(mean(boosting_df$train$freq),length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$ref, pred_phi=NULL, boosting_df$test$freq, res = FALSE),
-                                            deviance(pred$test$boost, pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$init, pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$boosted_glm$vanilla , pred_phi=NULL, boosting_df$test$freq, res = FALSE),
-                                            deviance(pred$test$boosted_glm$vanilla_no_inter , pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$boosted_glm$lasso , pred_phi=NULL, boosting_df$test$freq, res = FALSE)),4) ,
                          
                          
                          Fidelity= round(c(0,
                                            cor(pred$test$ref, pred$test$ref),
-                                           cor(pred$test$boost,pred$test$ref),
                                            cor(pred$test$init, pred$test$ref),
                                            cor(pred$test$boosted_glm$vanilla , pred$test$ref),
-                                           cor(pred$test$boosted_glm$vanilla_no_inter ,pred$test$ref),
                                            cor(pred$test$boosted_glm$lasso ,pred$test$ref)),2)
 )
 
@@ -93,26 +96,23 @@ MSEP_cal$MSEP <- round(MSEP_cal$MSEP/MSEP_cal$MSEP[2],4)
 MSEP_test$Deviance <- round(MSEP_test$Deviance/MSEP_test$Deviance[2],4)
 MSEP_cal$Deviance <- round(MSEP_cal$Deviance/MSEP_cal$Deviance[2],4)
 
-
-
-png(paste(plot_folder,"/Model_evaluation_test.png",sep="") )
-ggplot(tibble(x=0,y=0, tb=list(MSEP_test ))) +
+ 
+p <- ggplot(tibble(x=0,y=0, tb=list(MSEP_test ))) +
   theme_void() + 
   geom_table(aes(x, y, label = tb),parse = TRUE)  
-dev.off()
+
+ggsave(filename = paste(plot_folder,"/Model_evaluation_test.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
+
 # All predictions
 
-pred_data <- data.frame(model="1.Initial tariff", pred = pred$test$init ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq) %>%
-  bind_rows(  data.frame(model="2.Boosted GLM (vanilla)", pred = pred$test$boosted_glm$vanilla ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>%
-  bind_rows(  data.frame(model="4.GBM (reference)" , pred = pred$test$ref,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>%
-  bind_rows(  data.frame(model="5.Boosted (GBM) tariff", pred = pred$test$boost ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>%
-  bind_rows(  data.frame(model="3.Boosted GLM (lasso)",  pred= pred$test$boosted_glm$lasso , dur =  boosting_df$test$dur, obs= boosting_df$test$freq) )
+pred_data <- data.frame(model="1. Linear", pred = pred$test$init ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq) %>%
+  bind_rows(  data.frame(model="2. Final GLM (no lasso) ", pred = pred$test$boosted_glm$vanilla ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>%
+  bind_rows(  data.frame(model="4.GBM" , pred = pred$test$ref,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>% 
+  bind_rows(  data.frame(model="3.Final GLM",  pred= pred$test$boosted_glm$lasso , dur =  boosting_df$test$dur, obs= boosting_df$test$freq) )
 
 # MU
-
-png(paste(plot_folder,"/Predictions.png",sep=""))
-
-pred_data %>% 
+ 
+p <- pred_data %>% 
   group_by(model) %>%
   arrange(pred, .by_group = TRUE) %>%
   mutate(bin = ceiling( (cumsum(dur)/sum(dur)*100) )) %>%
@@ -125,90 +125,101 @@ pred_data %>%
   geom_point(aes(y=obs)) +  
   geom_line(aes(y=pred), linewidth=1, colour="red" ) +
   theme_classic() +
-  facet_grid(model ~. )
+  facet_grid(model ~. ) 
 
-dev.off()
+ggsave(filename = paste(plot_folder,"/Predictions.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
 
 # Game 
 
 game_data <- data.frame(init= pred$test$init, 
-                        boosted_glm_vanilla =  pred$test$boosted_glm$vanilla,
-                        boosted_glm_lasso =  pred$test$boosted_glm$lasso,
-                        boosted_gbm = pred$test$boost,
-                        ref_gbm = pred$test$ref,
+                        Final_model_no_lasso =  pred$test$boosted_glm$vanilla,
+                        Final_model =  pred$test$boosted_glm$lasso,
+                        GBM = pred$test$ref,
                         dur =  boosting_df$test$dur,
                         obs =   boosting_df$test$freq
 )
 
-
-png(paste(plot_folder,"/Game_boosted_vs_ref.png",sep=""))                      
-game_data %>% mutate(premium_boosted = cumsum(boosted_glm_vanilla*(boosted_glm_vanilla < ref_gbm)),
-                     profit_boosted_glm_vanilla = cumsum((boosted_glm_vanilla - obs)*(boosted_glm_vanilla < ref_gbm)),
-                     premium_ref = cumsum(ref_gbm*(boosted_glm_vanilla > ref_gbm)),
-                     profit_ref = cumsum((ref_gbm - obs)*(boosted_glm_vanilla > ref_gbm)),
+                      
+p <- game_data %>% mutate(premium_Final_model = cumsum(Final_model*(Final_model < GBM)),
+                     profit_Final_model = cumsum((Final_model - obs)*(Final_model < GBM)),
+                     premium_gbm = cumsum(GBM*(Final_model > GBM)),
+                     profit_gbm = cumsum((GBM - obs)*(Final_model > GBM)),
                      id=row_number()/n())     %>%
   
   ggplot(aes(x=id))+
-  geom_line(aes(y=profit_boosted_glm_vanilla, colour="blue") )+
-  geom_line(aes(y=profit_ref, colour="red") )+
+  geom_line(aes(y=profit_Final_model, colour="blue") )+
+  geom_line(aes(y=profit_gbm, colour="red") )+
   theme_classic()+
-  theme(legend.position = c(.8, .5))+
+  theme(legend.position = c(.3, .1))+
   labs(
     y="Profit (accumulated)",
     x="% of portfolio (lowest to highest risk)", color="",shape="" ) +
-  scale_colour_manual(name = 'model', 
+  scale_colour_manual(name = '', 
                       values =c('red'='red','blue'='blue'), 
-                      labels = c( 'After trees','GBM')) 
-dev.off()                 
+                      labels = c( 'Final Model','GBM'))              
 
+ggsave(filename = paste(plot_folder,"/Game_final_vs_gbm.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
 
-png(paste(plot_folder,"/Game_init_vs_ref.png",sep="")) 
-game_data %>% mutate(premium_init = cumsum(init*(init < ref_gbm)),
-                     profit_init = cumsum((init - obs)*(init < ref_gbm)),
-                     premium_ref = cumsum(ref_gbm*(init > ref_gbm)),
-                     profit_ref = cumsum((ref_gbm - obs)*(init > ref_gbm)),
+ 
+p <- game_data %>% mutate(premium_linear = cumsum(init*(init < GBM)),
+                     profit_linear = cumsum((init - obs)*(init < GBM)),
+                     premium_gbm = cumsum(GBM*(init > GBM)),
+                     profit_gbm = cumsum((GBM - obs)*(init > GBM)),
                      id=row_number()/n())     %>%
   
   ggplot(aes(x=id))+
-  geom_line(aes(y=profit_init, colour="blue") )+
-  geom_line(aes(y=profit_ref, colour="red") )+
+  geom_line(aes(y=profit_linear, colour="blue") )+
+  geom_line(aes(y=profit_gbm, colour="red") )+
   theme_classic()+
-  theme(legend.position = c(.8, .5))+
+  theme(legend.position = c(.3, .1))+
   labs( 
     y="Profit (accumulated)",
     x="% of portfolio (lowest to highest risk)", color="",shape="" ) +
-  scale_colour_manual(name = 'model', 
+  scale_colour_manual(name = '', 
                       values =c('red'='red','blue'='blue'), 
                       labels = c('Linear', 'GBM')) 
-dev.off()
 
+ggsave(filename = paste(plot_folder,"/Game_linear_vs_gbm.png",sep=""), plot = p, dpi = 300,width = 10, height = 8)
+ 
 
-
-png(paste(plot_folder,"/Game_boosted_vs_init.png",sep="")) 
-
-game_data %>% mutate(premium_boosted = cumsum(boosted_glm_vanilla*(boosted_glm_vanilla < init)),
-                     profit_boosted_glm_vanilla = cumsum((boosted_glm_vanilla - obs)*(boosted_glm_vanilla < init)),
-                     premium_init = cumsum(init*(boosted_glm_vanilla > init)),
-                     profit_init = cumsum((init - obs)*(boosted_glm_vanilla > init)),
+p <- game_data %>% mutate(premium_Final_model = cumsum(Final_model*(Final_model < init)),
+                     profit_Final_model = cumsum((Final_model- obs)*(Final_model < init)),
+                     premium_linear = cumsum(init*(Final_model> init)),
+                     profit_linear = cumsum((init - obs)*(Final_model > init)),
                      id=row_number()/n())     %>%
   
   ggplot(aes(x=id)) +
-  geom_line(aes(y=profit_boosted_glm_vanilla, colour="red"))+
-  geom_line(aes(y=profit_init, colour="blue"))+
+  geom_line(aes(y=profit_Final_model, colour="red"))+
+  geom_line(aes(y=profit_linear, colour="blue"))+
   theme_classic()+
-  theme(legend.position = c(.8, .5))+
+  theme(legend.position = c(.3, .1))+
   labs(
     y="Profit (accumulated)",
     x="% of portfolio (lowest to highest risk)", color="",shape="" ) +
-  scale_colour_manual(name = 'model', 
+  scale_colour_manual(name = "", 
                       values =c('red'='red','blue'='blue'), 
-                      labels = c('GBM', 'Boosted GLM')) 
-dev.off()
+                      labels = c( 'Linear','Final model'))  
 
-t <- game_data %>% mutate(premium_boosted = cumsum(boosted_glm_vanilla*(boosted_glm_vanilla < init)),
-                          profit_boosted = cumsum((boosted_glm_vanilla - obs)*(boosted_glm_vanilla < init)),
-                          premium_init = cumsum(init*(boosted_glm_vanilla > init)),
-                          profit_init = cumsum((init - obs)*(boosted_glm_vanilla > init)),
-                          id=row_number()/n())   
+ggsave(filename = paste(plot_folder,"/Game_final_vs_linear.png",sep=""), plot = p, dpi = 300,width = 10, height = 8)
 
+ 
+p <- game_data %>% mutate(premium_Final_model_no_lasso = cumsum(Final_model_no_lasso*(Final_model_no_lasso < Final_model)),
+                     profit_Final_model_no_lasso = cumsum((Final_model_no_lasso - obs)*(Final_model_no_lasso < Final_model)),
+                     premium_Final_model = cumsum(Final_model*(Final_model_no_lasso > Final_model)),
+                     profit_Final_model = cumsum((Final_model - obs)*(Final_model_no_lasso > Final_model)),
+                     id=row_number()/n())     %>%
+  
+  ggplot(aes(x=id))+
+  geom_line(aes(y=profit_Final_model_no_lasso, colour="blue") )+
+  geom_line(aes(y=profit_Final_model, colour="red") )+
+  theme_classic()+
+  theme(legend.position = c(.3, .1))+
+  labs(
+    y="Profit (accumulated)",
+    x="% of portfolio (lowest to highest risk)", color="",shape="" ) +
+  scale_colour_manual( name="",
+                      values =c('red'='red','blue'='blue'), 
+                      labels = c( 'Final Model (no lasso)','Final Model')) 
+
+ggsave(filename = paste(plot_folder,"/Game_final_vs_nolasso.png",sep=""), plot = p, dpi = 300,width = 10, height = 8)
 
