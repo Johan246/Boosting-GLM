@@ -4,63 +4,6 @@ print(paste("STARTING WITH DATASET: ", data,sep="" ))
 
 
 
-# Factors of interest
-
-if (data == "REAL"){
-facts <- c("BOYTA", 
-           "Bolag" , 
-           "Fast_alder" , 
-           "Byggnadstyp" , 
-           "Brevobjekt" , 
-           "Alder" )
-}
-
-if (data == "freMTPL"){
-  facts <- c("Area"	, 
-             "VehPower"	, 
-             "VehAge" ,	
-             "DrivAge" , 
-             "VehBrand", 
-             "VehGas",
-             "Density", 
-             "Region", 
-             "BonusMalus" )
-}
-
-
-
-if (data == "beMTPL"){ ### OBSOBS: EXCLUDING POSTCODE!!
-  facts <- c("coverage",
-             "ageph" ,
-             "sex",
-             "bm" ,
-             "power",
-             "agec" ,
-             "fuel",
-             "use"  ,
-             "fleet")
-}
-
-
-if (data == "auspriv"){
-  
-  facts <- c("VehValue",
-             "VehAge",
-             "VehBody",
-             "Gender",
-             "DrivAge")
-  
-  
-}
-
-if (data == "norauto"){
-  
-  facts <- c("Male",
-             "Young",
-             "DistLimit",
-             "GeoRegion")
-  
-}
 
 # ======================================================================
 ## Data import ##
@@ -731,6 +674,10 @@ boosting_df$test_factors_final <- data.frame(boosting_df$test_factors_final, boo
 final_factors <- apply(boosting_df$train_factors_final,2, FUN= function(x) length(unique(x)))   
 final_factors <- names(final_factors[final_factors>1])  
 final_factors <- final_factors[!final_factors %in% c("dur", "freq")] 
+models$final$Final_factors$all <- final_factors
+models$final$Final_factors$num_facts <- num_facts
+models$final$Final_factors$cat_facts <- cat_facts
+
 
 # Models
 model.freq_glm.final <- formula(eval(paste("freq ~ factor(", paste(final_factors, collapse = ") + factor(" ), ") + offset(log(dur))" , sep="")))
@@ -772,7 +719,7 @@ summary(models$final$vanilla)
 pred$train$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$train_factors_final, type="response", newoffset=boosting_df$train_factors_final$dur)) , function(x) min(x,2))    
 pred$cal$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$cal_factors_final, type="response"), newoffset=boosting_df$cal_factors_final$dur), function(x) min(x,2))  
 pred$test$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$test_factors_final, type="response") , newoffset=boosting_df$test_factors_final$dur ) , function(x) min(x,2))
-
+ 
 pred$train$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso,  newx = model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) )), function(x) min(x,2))  
 pred$cal$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur))), function(x) min(x,2))  
 pred$test$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$test_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$test_factors$dur))) , function(x) min(x,2))  

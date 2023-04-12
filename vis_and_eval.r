@@ -12,7 +12,7 @@ load(paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
 load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))
 load(paste("Data/PDP_uni_",suffix,".RData", sep = ""))
 
-num_facts <-  colnames(boosting_df$train %>% dplyr::select(-c("dur","freq")))[sapply(boosting_df$train %>% dplyr::select(-c("dur","freq")),class) %in% c("numeric","integer")] 
+num_facts <-  colnames(boosting_df$train[,facts])[sapply(boosting_df$train %>% dplyr::select(facts),class) %in% c("numeric","integer")] 
 
 # Partial Dependence Plots - final models (incl bench) ---------------------------------
 
@@ -49,13 +49,13 @@ MSEP_cal <- data.frame( Model= model_names,
                                       mean((pred$cal$ref - boosting_df$cal$freq) ^2), 
                                       mean((pred$cal$init - boosting_df$cal$freq) ^2),
                                       mean((pred$cal$boosted_glm$vanilla - boosting_df$cal$freq)^2),
-                                      mean((pred$cal$boosted_glm$lasso - boosting_df$cal$freq)^2)),4),
+                                      mean((pred$cal$boosted_glm$lasso - boosting_df$cal$freq)^2)),5),
                         
                         Deviance = round(c(deviance(rep(mean(boosting_df$train$freq),length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$ref, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$init, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$boosted_glm$vanilla , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
-                                           deviance(pred$cal$boosted_glm$lasso , pred_phi=NULL, boosting_df$cal$freq, res = FALSE)),4),
+                                           deviance(pred$cal$boosted_glm$lasso , pred_phi=NULL, boosting_df$cal$freq, res = FALSE)),5),
                         
                         
                         
@@ -74,13 +74,13 @@ MSEP_test <- data.frame( Model=model_names,
                                        mean((pred$test$ref - boosting_df$test$freq) ^2),  
                                        mean((pred$test$init - boosting_df$test$freq) ^2),
                                        mean((pred$test$boosted_glm$vanilla - boosting_df$test$freq) ^2),
-                                       mean((pred$test$boosted_glm$lasso - boosting_df$test$freq) ^2)),4),
+                                       mean((pred$test$boosted_glm$lasso - boosting_df$test$freq) ^2)),5),
                          
                          Deviance = round(c(deviance(rep(mean(boosting_df$train$freq),length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$ref, pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$init, pred_phi=NULL, boosting_df$test$freq, res = FALSE),
                                             deviance(pred$test$boosted_glm$vanilla , pred_phi=NULL, boosting_df$test$freq, res = FALSE),
-                                            deviance(pred$test$boosted_glm$lasso , pred_phi=NULL, boosting_df$test$freq, res = FALSE)),4) ,
+                                            deviance(pred$test$boosted_glm$lasso , pred_phi=NULL, boosting_df$test$freq, res = FALSE)),5) ,
                          
                          
                          Fidelity= round(c(0,
@@ -96,7 +96,13 @@ MSEP_cal$MSEP <- round(MSEP_cal$MSEP/MSEP_cal$MSEP[2],4)
 MSEP_test$Deviance <- round(MSEP_test$Deviance/MSEP_test$Deviance[2],4)
 MSEP_cal$Deviance <- round(MSEP_cal$Deviance/MSEP_cal$Deviance[2],4)
 
- 
+evals <- list(data= data,MSEP_test=MSEP_test, MSEP_cal=MSEP_cal)
+if (save == TRUE){
+  save(evals, file = paste("Data/evals_",suffix,".RData", sep = ""))
+}
+
+
+  
 p <- ggplot(tibble(x=0,y=0, tb=list(MSEP_test ))) +
   theme_void() + 
   geom_table(aes(x, y, label = tb),parse = TRUE)  
@@ -129,7 +135,29 @@ p <- pred_data %>%
 
 ggsave(filename = paste(plot_folder,"/Predictions.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
 
-# Game 
+
+
+# Scatter -----------------------------------------------------------------
+
+scatter_data <- data.frame(Final_pred=  pred$test$boosted_glm$lasso,
+                           GBM = pred$test$ref)
+
+p <- scatter_data %>% ggplot(aes(x=log(Final_pred),y=log(GBM))) + geom_point() +
+  theme_classic()+
+  
+  labs(
+    y="GBM prediction (log-scale)",
+    x="Final model prediction (log-scale)", color="",shape="" )
+
+ggsave(filename = paste(plot_folder,"/Scatter_",suffix,".png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
+
+
+
+
+
+# Game --------------------------------------------------------------------
+
+
 
 game_data <- data.frame(init= pred$test$init, 
                         Final_model_no_lasso =  pred$test$boosted_glm$vanilla,
