@@ -366,6 +366,7 @@ if (new_univar_effects == TRUE){
     
       if (is.factor(df$train[,fact]) == FALSE){ 
       
+        k <- min(30,length(unique(df$train[,fact])))
       
       p <- suppressMessages( partial(models$raw_gbm, 
                    pred.fun=pgbm_raw,
@@ -374,23 +375,17 @@ if (new_univar_effects == TRUE){
                    n.trees= models$raw_gbm.ntrees,
                    quantiles = TRUE,
                    recursive = FALSE,
-                   probs = c(1:30)/30 ))
+                   probs = c(1:k)/k ))
      
       univariate_pdp_data[[fact]] <- data.frame(factor_val = p[,1], 
                                                 Ref_gbm = p$yhat[])
       
       }
         
-    }
   }
-  
-  
-
-# Load or save data
-if (save == TRUE){
-    save(univariate_pdp_data, file = paste("Data/Univar_effects_",suffix,".RData", sep = ""))
+  # Load or save data
+  save(univariate_pdp_data, file = paste("Data/Univar_effects_",suffix,".RData", sep = ""))
   }else{
-
     load(paste("Data/Univar_effects_",suffix,".RData", sep = ""))
     } 
   
@@ -447,10 +442,8 @@ if (new_twoway_effects == TRUE){
                   grid.resolution = max_grid))
   
   }
-}
-
-# Load or save data
-if (save == TRUE){
+  
+  # Load or save data
   save(interaction_effects, file = paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
 }else{
   load(paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))
@@ -491,7 +484,8 @@ if (scoring_boosting_factors == TRUE){
     
     factor_update[[fact]] <- as.numeric( approx(univariate_pdp_data[[fact]]$factor_val, 
                                                 univariate_pdp_data[[fact]][[model_name]], 
-                                                xout=range)[["y"]])
+                                                xout=range)[["y"]],
+                                                rule=2)
     
  
     factor_update[[fact]][is.na(factor_update[[fact]])] <- mean(boosting_df$train$freq)
@@ -505,6 +499,7 @@ if (scoring_boosting_factors == TRUE){
     cal_factors_new[fact] <- factor_update[[fact]][boosting_df$cal[[fact]]  - min(range) + 1 ]
     test_factors_new[fact] <- factor_update[[fact]][boosting_df$test[[fact]]  - min(range) + 1 ]
   }
+  
   ## Interactions
   for (k in 1:length(top_interactions$Faktor_1)){
     
@@ -532,7 +527,6 @@ if (scoring_boosting_factors == TRUE){
       
     range_grid <- data.frame(expand.grid(range1,range2), pred = NA )
     
-     
     # If any of the two factors are categorical, matching exact, otherwise nearest neighbor
     for (i in 1: nrow(range_grid)){
       if (is.numeric(df$all[[top_interactions$Faktor_1[k]]])){
@@ -608,15 +602,20 @@ if (scoring_boosting_factors == TRUE){
   boosting_df$train_factors <- train_factors_new
   boosting_df$cal_factors <- cal_factors_new
   boosting_df$test_factors <- test_factors_new
-   
+  
   
   # Save or load
   if (save == TRUE){save(boosting_df, file=paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))
-  }else{
-  load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))}  
+    
+    save(univariate_pdp_data_complete, file= paste("Data/PDP_uni_complete",suffix,".RData", sep = ""))
+    }
   
+  }else{
+  load(paste("Data/Boost_data_",suffix,"_raw.RData", sep = ""))  
+  load(paste("Data/PDP_uni_",suffix,".RData", sep = ""))
+  load(paste("Data/PDP_uni_complete",suffix,".RData", sep = ""))
 }
- 
+
 # ======================================================================
 ##  Auto-calibration of PDP-factors ##
 # ======================================================================
@@ -624,6 +623,7 @@ if (scoring_boosting_factors == TRUE){
 tree_control = rpart.control(minbucket=10, cp=0.00001)
 
 all_facts <- names(boosting_df$train_factors %>% dplyr::select(-c("freq","dur")))
+all_trees <- list()
 
 boosting_df$train_factors_final <- boosting_df$train_factors
 boosting_df$cal_factors_final <- boosting_df$cal_factors
@@ -651,7 +651,7 @@ for (fact in all_facts){
   boosting_df$cal_factors_final[fact] <- predict(tree_temp, newdata = boosting_df$cal_factors) 
   boosting_df$test_factors_final[fact] <- predict(tree_temp, newdata = boosting_df$test_factors) 
   
-  
+  all_trees[[fact]] <- tree_temp
   
     # Updating PDP-values
   if (fact %in% facts) { 
@@ -674,25 +674,25 @@ boosting_df$test_factors_final <- data.frame(boosting_df$test_factors_final, boo
 final_factors <- apply(boosting_df$train_factors_final,2, FUN= function(x) length(unique(x)))   
 final_factors <- names(final_factors[final_factors>1])  
 final_factors <- final_factors[!final_factors %in% c("dur", "freq")] 
-models$final$Final_factors$all <- final_factors
+models$final$Final_factors$all <- final_factors 
 models$final$Final_factors$num_facts <- num_facts
 models$final$Final_factors$cat_facts <- cat_facts
 
 
 # Models
-model.freq_glm.final <- formula(eval(paste("freq ~ factor(", paste(final_factors, collapse = ") + factor(" ), ") + offset(log(dur))" , sep="")))
-model.freq_glm.final_lasso <- formula(eval(paste("freq ~ factor(", paste(final_factors, collapse = ") + factor(" ), ")" , sep="")))
+models$final$functional_form <- formula(eval(paste("freq ~ factor(", paste(final_factors, collapse = ") + factor(" ), ") + offset(log(dur))" , sep="")))
+models$final$functional_form_lasso <- formula(eval(paste("freq ~ factor(", paste(final_factors, collapse = ") + factor(" ), ")" , sep="")))
 
 # Vanilla GLM -------------------------------------------------------------
 
 
-models$final$vanilla  <- glm(model.freq_glm.final, 
+models$final$vanilla  <- glm(models$final$functional_form, 
                                 data = boosting_df$train_factors_final, 
                                 family = quasipoisson(link = "log"))
  
 # Lasso GLM -------------------------------------------------------------
 
-glmnet_data <- model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final )
+glmnet_data <- model.matrix(models$final$functional_form_lasso , boosting_df$train_factors_final )
 glmnet_data_y <- as.matrix(boosting_df$train_factors_final %>% dplyr::select(c(freq,dur)))
  
 
@@ -720,9 +720,9 @@ pred$train$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$van
 pred$cal$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$cal_factors_final, type="response"), newoffset=boosting_df$cal_factors_final$dur), function(x) min(x,2))  
 pred$test$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$test_factors_final, type="response") , newoffset=boosting_df$test_factors_final$dur ) , function(x) min(x,2))
  
-pred$train$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso,  newx = model.matrix(model.freq_glm.final_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) )), function(x) min(x,2))  
-pred$cal$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur))), function(x) min(x,2))  
-pred$test$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(model.freq_glm.final_lasso , boosting_df$test_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$test_factors$dur))) , function(x) min(x,2))  
+pred$train$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso,  newx = model.matrix(models$final$functional_form_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) )), function(x) min(x,2))  
+pred$cal$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(models$final$functional_form_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur))), function(x) min(x,2))  
+pred$test$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(models$final$functional_form_lasso , boosting_df$test_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$test_factors$dur))) , function(x) min(x,2))  
 
 # Balance check  -------------------------------------------------
 mean(boosting_df$train$freq)
@@ -744,7 +744,7 @@ coef_values[is.na(coef_values)] <- 0
 
 # Adjusting model values
 for (fact in num_facts){
-   temp_pdp_val <- round(univariate_pdp_data_complete[[fact]]$Final_model ,6)
+   temp_pdp_val <- round(univariate_pdp_data_complete[[fact]]$Final_model/mean(boosting_df$train_factors$freq) ,6)
    temp_coef_level <- round(as.numeric(factor_values[which(factors==fact) ]),6)
    temp_coef_val <- round(as.numeric(coef_values[which(factors==fact) ]),6)
    
@@ -758,20 +758,21 @@ for (fact in num_facts){
      }
        
 
-   univariate_pdp_data_complete[[fact]]$Final_model_lasso <- temp_new_pdp_val
+   univariate_pdp_data_complete[[fact]]$Final_model_lasso <- exp(temp_new_pdp_val)*mean(boosting_df$train_factors$freq)
    }
 
 # ======================================================================
 ##  Visualisation and performance metrics ##
 # ======================================================================
  
-if (save == TRUE){
+if (save_last == TRUE){
   save(models, file = paste("Data/Models_",suffix,".RData", sep = ""))
   save(boosting_df, file = paste("Data/Boost_data_",suffix,".RData", sep = ""))
   save(pred, file = paste("Data/Predictions_",suffix,".RData", sep = ""))
   save(univariate_pdp_data_complete, file = paste("Data/PDP_uni_",suffix,".RData", sep = ""))
+  save(all_trees, file = paste("Data/All_trees_",suffix,".RData", sep = ""))
   
 }
- 
+
 
  

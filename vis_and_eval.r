@@ -51,7 +51,7 @@ MSEP_cal <- data.frame( Model= model_names,
                                       mean((pred$cal$boosted_glm$vanilla - boosting_df$cal$freq)^2),
                                       mean((pred$cal$boosted_glm$lasso - boosting_df$cal$freq)^2)),5),
                         
-                        Deviance = round(c(deviance(rep(mean(boosting_df$train$freq),length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
+                        Deviance = round(c(deviance(rep(mean(boosting_df$train$freq), length(boosting_df$cal$freq)) , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$ref, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$init, pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
                                            deviance(pred$cal$boosted_glm$vanilla , pred_phi=NULL, boosting_df$cal$freq, res = FALSE),
