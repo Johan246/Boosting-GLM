@@ -5,7 +5,7 @@
 # =========================================================================
 
 # INIT
-setwd("//e75a0679/sakta/UTV/SU/Program/Analys/Boosting GLM/Boosting-GLM")
+setwd("C:/Users/johan.palmquist/OneDrive - FCG Holding Sverige AB/Desktop/Projekt/Supervised GLM/Boosting-GLM")
 
 source("load_packages.r")
 load_packages(updateR = FALSE)
@@ -15,7 +15,7 @@ load_packages(updateR = FALSE)
 date <- "20220403"
 
 
-for (data in c("norauto","beMTPL", "auspriv","freMTPL","REAL")){ # "norauto","beMTPL", "auspriv","freMTPL","REAL"
+for (data in c("norauto","beMTPL", "auspriv","freMTPL")){ # "norauto","beMTPL", "auspriv","freMTPL"
   rm(list = setdiff(ls(),c("data","date")))
   
   new_models <- FALSE
@@ -92,7 +92,7 @@ for (data in c("norauto","beMTPL", "auspriv","freMTPL","REAL")){ # "norauto","be
   
   # Modeling hyperparameters ---------------------------------------------------------
   
-  n_trees_mu <- 2000
+  n_trees_mu <- 4000
   tree_depth_mu <- 2
   learning_rate_mu <- 0.01
   
@@ -100,7 +100,7 @@ for (data in c("norauto","beMTPL", "auspriv","freMTPL","REAL")){ # "norauto","be
   cal_frac <- 0.3 # Of the training data, how much for calibration of marginal effects?
   
   
-  source("modeling.r")
+  #source("modeling.r")
   source("vis_and_eval.r")
   
 }

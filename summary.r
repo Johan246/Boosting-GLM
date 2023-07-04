@@ -23,7 +23,7 @@ k <- 1
 
 
 # Loading data ------------------------------------------------------------
-for (data in c( "REAL")){ # "norauto","beMTPL", "auspriv","freMTPL", "REAL"
+for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL", "auspriv","freMTPL"
  print(paste("Summary stats and plots for", data))
   
   suffix <- data
@@ -34,49 +34,65 @@ for (data in c( "REAL")){ # "norauto","beMTPL", "auspriv","freMTPL", "REAL"
   load(file = paste("Data/All_trees_",suffix,".RData", sep = "")) 
   load(file = paste("Data/Interaction_effects_",suffix,"_raw.RData", sep = ""))  
   load(paste("Data/Univar_effects_",suffix,".RData", sep = ""))
-
-
+  
   eval_all[k,1] <- data
-  eval_all[k,2] <- percent(evals$MSEP_test$MSEP[5]-1,0.01)
-  eval_all[k,3] <- percent(evals$MSEP_test$Deviance[5]-1,0.01)
-  eval_all[k,4] <- percent(evals$MSEP_test$Fidelity[5])
-  eval_all[k,5] <- percent(evals$MSEP_test$MSEP[1]-1,0.01)
-  eval_all[k,6] <- percent(evals$MSEP_test$MSEP[3]-1,0.01)
-  eval_all[k,7] <- length(unique(pred$train$boosted_glm$lasso/boosting_df$train_factors_final$dur))
-
-
-
+  eval_all[k,2] <- sum(coef(models$final$lasso) != 0)
+  eval_all[k,3] <- percent(evals$MSEP_test$MSEP[5]-1,0.01)
+  eval_all[k,4] <- percent(evals$MSEP_test$Deviance[5]-1,0.01)
+  eval_all[k,5] <- percent(evals$MSEP_test$Fidelity[5])
+  eval_all[k,6] <- percent(evals$MSEP_test$MSEP[1]-1,0.01) 
+   
+  
+  chapred_data <- data.frame(model="3. Final GLM (no lasso)", pred = pred$test$boosted_glm$vanilla ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq) %>%
+    bind_rows(  data.frame(model="1.GBM" , pred = pred$test$ref,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>% 
+    bind_rows(  data.frame(model="2.Final GLM",  pred= pred$test$boosted_glm$lasso , dur =  boosting_df$test$dur, obs= boosting_df$test$freq) )
+  
+  
+  p <- pred_data %>% filter(model != "3. Final GLM (no lasso)") %>%
+    group_by(model) %>%
+    arrange(pred, .by_group = TRUE) %>% mutate(quantile = row_number()/n()) %>%
+    group_by(model) %>%
+    mutate(
+      cc  = cumsum(obs)/sum(obs),
+      obs = mean(obs)
+    ) %>%
+    ggplot(aes(x=quantile)) +  
+    xlim(0,length(pred$test$boosted_glm$vanilla)) +
+    geom_abline(intercept=0, slope= 1,linetype = "dashed") +
+    geom_line(aes(y=cc, color = model), linewidth=0.5 ) +
+    theme_classic()  + theme(legend.position = "bottom")+
+    scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+    labs(color ="")
+  
+  ggsave(filename = paste(plot_folder,"/",data,"_","CC.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
+  
+  
 
   coef(models$final$lasso)
 
   k <- k+1
-
-  # Get final factors
+  
+  # Get final factorsgm
   row_names <- rownames(coef(models$final$lasso))
   factors <- sub(".*\\((.*)\\).*", "\\1", row_names)
   final_factors[[data]] <- data.frame(factors=factors) %>% group_by(factors) %>% count()  %>% as.matrix()
 
-  
-  
-  colnames(eval_all) <- c("Data","MSEP-Final","Deviance-Final","Fidelity-Final", "MSEP-Intercept", "MSEP-Linear")
-  eval_all
-  
-  coef(models$final$lasso)
-  
+  colnames(eval_all) <- c("Data", "Parameters","MSEP-Difference","Deviance-Difference","Fidelity", "MSEP-Intercept-Difference")
+
   
   p <- ggplot(tibble(x=0,y=0, tb=list(eval_all) )) +
     theme_void() + 
-    geom_table(aes(x, y, label = tb),parse = TRUE)  
+    geom_table(aes(x, y, label = tb), parse = TRUE)  
   
   ggsave(filename = paste(plot_folder,"/Summary.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
   
-  
+
   # PDP ---------------------------------------------------------------------
   
   load(file = paste("Data/PDP_uni_complete",suffix,".RData", sep = ""))
   load(file = paste("Data/Interaction_effects_complete",suffix,"_raw.RData", sep = "")) 
    
-  
   #for ( fact in models$final$Final_factors$num_facts){
    
   init_data_temp <- boosting_df$train
@@ -85,7 +101,6 @@ for (data in c( "REAL")){ # "norauto","beMTPL", "auspriv","freMTPL", "REAL"
   pdp_values_temp <- univariate_pdp_data
   num_facts <- models$final$Final_factors$num_facts
   range_data <- univariate_pdp_data_complete
-   
   
   for (fact in num_facts){
     print(paste("Final pdp for", fact))
@@ -128,9 +143,9 @@ for (data in c( "REAL")){ # "norauto","beMTPL", "auspriv","freMTPL", "REAL"
     
     p <-  pdp_values_temp[[fact]] %>% 
       ggplot(aes(x=factor_val))+
-      geom_line(aes(y=final_model_lasso, color="red"))+
-      geom_line(aes(y=Ref_gbm , color="black")) +
-      geom_line(aes(y=final_model_vanilla, color="blue")) +
+      geom_step(aes(y=final_model_lasso, color="red"))+
+      geom_step(aes(y=Ref_gbm , color="black")) +
+      geom_step(aes(y=final_model_vanilla, color="blue")) +
       geom_abline(intercept = mean(boosting_df$train$freq),slope=0, color="grey", lty=2, alpha=0.5)+
       #xlim(xlim[1],xlim[2])+
       labs(x= fact,

@@ -20,9 +20,9 @@ for (fact in num_facts){
   
   p <-  univariate_pdp_data_complete[[fact]] %>% 
     ggplot(aes(x=factor_val))+
-    geom_line(aes(y=Final_model, color="red"))+
-    geom_line(aes(y=Ref_gbm_interpol , color="grey"), lty=2) +
-    geom_line(aes(y=Final_model_lasso, color="blue"))+
+    geom_step(aes(y=Final_model, color="red"))+
+    geom_step(aes(y=Ref_gbm_interpol , color="grey"), lty=2) +
+    geom_step(aes(y=Final_model_lasso, color="blue"))+
     geom_abline(intercept = mean(boosting_df$train$freq),slope=0, color="grey", alpha=0.5)+
     #xlim(xlim[1],xlim[2])+
     labs(x= fact,
@@ -45,7 +45,7 @@ model_names <- c("Intercept","GBM", "Linear", "Final GLM (no lasso)", "Final GLM
 MSEP_cal <- data.frame( Model= model_names,
                         
                         
-                        MSEP=round(c( mean((mean(boosting_df$train$freq) - boosting_df$cal$freq) ^2), 
+                        MSEP=round(c( mean((  mean(boosting_df$train$freq)/mean(boosting_df$train$dur)*boosting_df$cal$dur - boosting_df$cal$freq) ^2), 
                                       mean((pred$cal$ref - boosting_df$cal$freq) ^2), 
                                       mean((pred$cal$init - boosting_df$cal$freq) ^2),
                                       mean((pred$cal$boosted_glm$vanilla - boosting_df$cal$freq)^2),
@@ -66,11 +66,10 @@ MSEP_cal <- data.frame( Model= model_names,
                                           cor(pred$cal$boosted_glm$lasso ,pred$cal$ref)),2)
 )
 
-
 MSEP_test <- data.frame( Model=model_names,
                          
                          
-                         MSEP=round(c( mean((mean(boosting_df$train$freq) - boosting_df$test$freq) ^2),
+                         MSEP=round(c(  mean((  mean(boosting_df$train$freq)/mean(boosting_df$train$dur)*boosting_df$test$dur - boosting_df$test$freq) ^2),
                                        mean((pred$test$ref - boosting_df$test$freq) ^2),  
                                        mean((pred$test$init - boosting_df$test$freq) ^2),
                                        mean((pred$test$boosted_glm$vanilla - boosting_df$test$freq) ^2),
