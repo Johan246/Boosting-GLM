@@ -1,4 +1,4 @@
-#suffix <- "freMTPL"
+#suffix <- "norauto"
 # Helpfunctions -----------------------------------------------------------
 source("helpfunctions.r")
 
@@ -302,16 +302,19 @@ ggsave(filename = paste(plot_folder,"/",suffix,"_variable_importance.png",sep=""
 
 # Percentile "SHAP" -------------------------------------------------------
   
-boosting_df$train["pred_final"] <-pred$train$boosted_glm$lasso
+boosting_df$train["pred_final"] <-pred$train$boosted_glm$lasso/boosting_df$train["dur"] 
 
 # Get characteristics
 
 glmnet_data <- model.matrix(models$final$functional_form_lasso , boosting_df$train_factors_final )
 
+coef_info
+
 # Getting percentiles
 p25 <- quantile(boosting_df$train$pred_final , probs = 0.25)
 p50 <- quantile(boosting_df$train$pred_final, probs = 0.5)
 p75 <- quantile(boosting_df$train$pred_final, probs = 0.75)
+
 
 closest_row_index_p25 <- which.min(abs(boosting_df$train$pred_final - p25))
 p25_char <- boosting_df$train[closest_row_index_p25, ]
@@ -325,11 +328,14 @@ p75_char <- boosting_df$train[closest_row_index_p75, ]
 # Get factor values
 dim(glmnet_data)
 final_reg_function <-sweep(as.data.frame(glmnet_data), MARGIN = 2, STATS = as.numeric(coef_info[-2,]), FUN = "*")
+ 
 # Plot waterfall
-
+as.data.frame(glmnet_data)[closest_row_index_p50,]
+as.data.frame(boosting_df$train)[closest_row_index_p50,]
 p25_function <- final_reg_function[closest_row_index_p25,]
 p50_function <- final_reg_function[closest_row_index_p50,]
 p75_function <- final_reg_function[closest_row_index_p75,]
+ 
 
 names(p25_function) <- gsub("^[^.]+\\(([^.]+)\\).*$", "\\1", names(p25_function))
 names(p50_function) <- gsub("^[^.]+\\(([^.]+)\\).*$", "\\1", names(p50_function))
@@ -410,6 +416,4 @@ for (dat in fig_dat){
   i <- i+1
 
   }
-
-prod(p75$value)
 
