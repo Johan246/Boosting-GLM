@@ -33,16 +33,6 @@ for (data in c("norauto","beMTPL", "auspriv","freMTPL")){ # "norauto","beMTPL", 
   # Factors
   
   # Factors of interest
-  
-  if (data == "REAL"){
-    facts <- c("BOYTA", 
-               "Bolag" , 
-               "Fast_alder" , 
-               "Byggnadstyp" , 
-               "Brevobjekt" , 
-               "Alder" )
-  }
-  
   if (data == "freMTPL"){
     facts <- c("Area"	, 
                "VehPower"	, 

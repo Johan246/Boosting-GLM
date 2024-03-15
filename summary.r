@@ -43,7 +43,7 @@ for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL"
   eval_all[k,6] <- percent(evals$MSEP_test$MSEP[1]-1,0.01) 
    
   
-  chapred_data <- data.frame(model="3. Final GLM (no lasso)", pred = pred$test$boosted_glm$vanilla ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq) %>%
+  pred_data <- data.frame(model="3. Final GLM (no lasso)", pred = pred$test$boosted_glm$vanilla ,dur =  boosting_df$test$dur, obs= boosting_df$test$freq) %>%
     bind_rows(  data.frame(model="1.GBM" , pred = pred$test$ref,dur =  boosting_df$test$dur, obs= boosting_df$test$freq)) %>% 
     bind_rows(  data.frame(model="2.Final GLM",  pred= pred$test$boosted_glm$lasso , dur =  boosting_df$test$dur, obs= boosting_df$test$freq) )
   
@@ -60,7 +60,7 @@ for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL"
     xlim(0,length(pred$test$boosted_glm$vanilla)) +
     geom_abline(intercept=0, slope= 1,linetype = "dashed") +
     geom_line(aes(y=cc, color = model), linewidth=0.5 ) +
-    theme_classic()  + theme(legend.position = "bottom")+
+    theme_classic()  + theme(legend.position = "none")+
     scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
     scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
     labs(color ="")
@@ -68,7 +68,6 @@ for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL"
   ggsave(filename = paste(plot_folder,"/",data,"_","CC.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
   
   
-
   coef(models$final$lasso)
 
   k <- k+1
@@ -85,7 +84,7 @@ for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL"
     theme_void() + 
     geom_table(aes(x, y, label = tb), parse = TRUE)  
   
-  ggsave(filename = paste(plot_folder,"/Summary.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
+  #ggsave(filename = paste(plot_folder,"/Summary.png",sep="") , plot = p, dpi = 300,width = 10, height = 8)
   
 
   # PDP ---------------------------------------------------------------------
