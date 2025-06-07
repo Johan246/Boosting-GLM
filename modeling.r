@@ -716,9 +716,33 @@ coef(models$final$lasso)
 summary(models$final$vanilla) 
 
 # Predictions  -------------------------------------------------
-pred$train$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$train_factors_final, type="response", newoffset=boosting_df$train_factors_final$dur)) , function(x) min(x,2))    
-pred$cal$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$cal_factors_final, type="response"), newoffset=boosting_df$cal_factors_final$dur), function(x) min(x,2))  
-pred$test$boosted_glm$vanilla <- sapply(as.numeric(predict.glm(models$final$vanilla, newdat=boosting_df$test_factors_final, type="response") , newoffset=boosting_df$test_factors_final$dur ) , function(x) min(x,2))
+pred$train$boosted_glm$vanilla <- sapply(
+  as.numeric(predict.glm(
+    models$final$vanilla,
+    newdata = boosting_df$train_factors_final,
+    type = "response",
+    offset = log(boosting_df$train_factors_final$dur)
+  )),
+  function(x) min(x, 2)
+)
+pred$cal$boosted_glm$vanilla <- sapply(
+  as.numeric(predict.glm(
+    models$final$vanilla,
+    newdata = boosting_df$cal_factors_final,
+    type = "response",
+    offset = log(boosting_df$cal_factors_final$dur)
+  )),
+  function(x) min(x, 2)
+)
+pred$test$boosted_glm$vanilla <- sapply(
+  as.numeric(predict.glm(
+    models$final$vanilla,
+    newdata = boosting_df$test_factors_final,
+    type = "response",
+    offset = log(boosting_df$test_factors_final$dur)
+  )),
+  function(x) min(x, 2)
+)
  
 pred$train$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso,  newx = model.matrix(models$final$functional_form_lasso , boosting_df$train_factors_final ), type = "response",  s = best_lambda, newoffset = log(boosting_df$train_factors_final$dur) )), function(x) min(x,2))  
 pred$cal$boosted_glm$lasso <- sapply(as.numeric(predict(models$final$lasso, newx = model.matrix(models$final$functional_form_lasso , boosting_df$cal_factors_final ), type = "response", s = best_lambda, newoffset = log(boosting_df$cal_factors$dur))), function(x) min(x,2))  

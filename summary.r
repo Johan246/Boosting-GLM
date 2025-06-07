@@ -120,10 +120,19 @@ for (data in c( "norauto","beMTPL", "auspriv","freMTPL")){ #  "norauto","beMTPL"
       
       final_data_temp[fact] <- predict(all_trees[[fact]],newdata = pdp_data_temp)
       
-      pdp_values_temp[[fact]][i,"final_model_vanilla"] <- mean(sapply(as.numeric(predict.glm(models$final$vanilla,
-                                                                                             newdat=final_data_temp, 
-                                                                                             type="response", 
-                                                                                             newoffset=final_data_temp$dur)) , function(x) min(x,2)))
+      pdp_values_temp[[fact]][i, "final_model_vanilla"] <- mean(
+        sapply(
+          as.numeric(
+            predict.glm(
+              models$final$vanilla,
+              newdata = final_data_temp,
+              type = "response",
+              offset = log(final_data_temp$dur)
+            )
+          ),
+          function(x) min(x, 2)
+        )
+      )
     
       pdp_values_temp[[fact]][i,"final_model_lasso"] <- mean(sapply(as.numeric(predict(models$final$lasso,  
                                                                                        newx = model.matrix(models$final$functional_form_lasso , 
